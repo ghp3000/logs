@@ -426,15 +426,14 @@ func (t *Logging) println(_level _LEVEL, calldepth int, f interface{}, v ...inte
 			func() {
 				if t._format != FORMAT_NANO {
 					//bs := fmt.Append([]byte{}, v...)
-					bs := []byte(formatPattern(f, v))
+					bs := []byte(formatPattern(f, v...))
 					buf := getOutBuffer(bs, getlevelname(_level, t._format), t._format, k1(calldepth)+1)
 					t._rwLock.RLock()
 					defer t._rwLock.RUnlock()
 					t._fileObj.write2file(buf.Bytes())
 					buf.Free()
 				} else {
-					bs := make([]byte, 0)
-					t._fileObj.write2file(fmt.Appendln(bs, v...))
+					t._fileObj.write2file([]byte(formatPattern(f, v...)))
 				}
 			}()
 		}
