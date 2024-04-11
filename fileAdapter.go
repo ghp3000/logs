@@ -83,10 +83,11 @@ func (c *FileLog) loop() {
 	defer catchError()
 	var item *Item
 	defer c.fs.close()
+	buf := bytes.NewBuffer(nil)
 	for {
 		select {
 		case item = <-c.cache:
-			c.write(item)
+			c.write(buf, item)
 		case <-c.cancel:
 			close(c.cancel)
 			close(c.cache)
@@ -99,12 +100,13 @@ func (c *FileLog) Write(item *Item) {
 		return
 	}
 	if c.sync {
-		c.write(item)
+		buf := bytes.NewBuffer(nil)
+		c.write(buf, item)
 	} else {
 		c.cache <- item
 	}
 }
-func (c *FileLog) write(item *Item) (bakfn string, err error) {
+func (c *FileLog) write(buf *bytes.Buffer, item *Item) (bakfn string, err error) {
 	if item == nil {
 		return
 	}
@@ -116,7 +118,6 @@ func (c *FileLog) write(item *Item) (bakfn string, err error) {
 		if openFileErr == nil {
 			c._rwLock.RLock()
 			defer c._rwLock.RUnlock()
-			buf := bytes.NewBuffer(nil)
 			c.fs.write2file(c.formatItem(buf, item).Bytes())
 			buf.Reset()
 			return
@@ -164,7 +165,7 @@ func (c *FileLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
 	buf.WriteString(strconv.Itoa(item.Line))
 	buf.WriteString("]")
 	buf.WriteString(item.Content)
-	buf.WriteString("\n")
+	buf.WriteByte('\n')
 	return buf
 }
 

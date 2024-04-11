@@ -1,7 +1,9 @@
 package logs
 
 import (
+	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -25,11 +27,26 @@ func (c *ConsoleLog) Write(item *Item) {
 	if c.level > item.Level {
 		return
 	}
+	buf := bytes.NewBuffer(nil)
+	fmt.Print(c.formatItem(buf, item).Bytes())
+	buf.Reset()
+}
+func (c *ConsoleLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
+	buf.WriteString(item.Time.Format(c.timeFormat))
+	buf.WriteString(" [")
+	buf.WriteString(item.Level.Name())
+	buf.WriteString("] ")
 	if c.trim {
-		fmt.Printf(c.format, item.Time.Format(c.timeFormat), item.Level.Name(), strings.TrimLeft(item.File, c.trimPath), item.Line, item.Content)
+		buf.WriteString(strings.TrimLeft(item.File, c.trimPath))
 	} else {
-		fmt.Printf(c.format, item.Time.Format(c.timeFormat), item.Level.Name(), item.File, item.Line, item.Content)
+		buf.WriteString(item.File)
 	}
+	buf.WriteString(":[")
+	buf.WriteString(strconv.Itoa(item.Line))
+	buf.WriteString("]")
+	buf.WriteString(item.Content)
+	buf.WriteByte('\n')
+	return buf
 }
 func (c *ConsoleLog) Close() {
 	c.level = LevelOff
