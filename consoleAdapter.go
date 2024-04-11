@@ -24,11 +24,12 @@ func NewConsoleLog(level LEVEL, timeFormat, format string, trimPath string) Adap
 	}
 }
 func (c *ConsoleLog) Write(item *Item) {
+	defer c.clean(item)
 	if c.level > item.Level {
 		return
 	}
 	buf := bytes.NewBuffer(nil)
-	fmt.Print(c.formatItem(buf, item).Bytes())
+	fmt.Print(c.formatItem(buf, item).String())
 	buf.Reset()
 }
 func (c *ConsoleLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
@@ -41,9 +42,9 @@ func (c *ConsoleLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
 	} else {
 		buf.WriteString(item.File)
 	}
-	buf.WriteString(":[")
+	buf.WriteString("[")
 	buf.WriteString(strconv.Itoa(item.Line))
-	buf.WriteString("]")
+	buf.WriteString("]:")
 	buf.WriteString(item.Content)
 	buf.WriteByte('\n')
 	return buf

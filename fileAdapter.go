@@ -81,12 +81,11 @@ func NewFileLog(level LEVEL, timeFormat, format string, trimPath string) (Adapte
 }
 func (c *FileLog) loop() {
 	defer catchError()
-	var item *Item
 	defer c.fs.close()
 	buf := bytes.NewBuffer(nil)
 	for {
 		select {
-		case item = <-c.cache:
+		case item := <-c.cache:
 			c.write(buf, item)
 		case <-c.cancel:
 			close(c.cancel)
@@ -97,6 +96,7 @@ func (c *FileLog) loop() {
 }
 func (c *FileLog) Write(item *Item) {
 	if c.level > item.Level {
+		c.clean(item)
 		return
 	}
 	if c.sync {
@@ -110,6 +110,7 @@ func (c *FileLog) write(buf *bytes.Buffer, item *Item) (bakfn string, err error)
 	if item == nil {
 		return
 	}
+	defer c.clean(item)
 	if c.fs.isFileWell {
 		var openFileErr error
 		if c.fs.isMustBackUp() {
@@ -161,9 +162,9 @@ func (c *FileLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
 	} else {
 		buf.WriteString(item.File)
 	}
-	buf.WriteString(":[")
+	buf.WriteString("[")
 	buf.WriteString(strconv.Itoa(item.Line))
-	buf.WriteString("]")
+	buf.WriteString("]:")
 	buf.WriteString(item.Content)
 	buf.WriteByte('\n')
 	return buf

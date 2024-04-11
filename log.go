@@ -6,6 +6,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -48,12 +50,15 @@ type Item struct {
 	File    string
 	Line    int
 	Content string
+	count   int32
+	pool    *sync.Pool
 }
 
 type GLogger struct {
 	level     LEVEL //基础日志级别.
 	callDepth int
 	adapters  map[string]Adapter
+	pool      sync.Pool
 }
 
 func New(callDepth int, adapter ...Adapter) *GLogger {
@@ -61,6 +66,11 @@ func New(callDepth int, adapter ...Adapter) *GLogger {
 		level:     LevelOff,
 		callDepth: callDepth,
 		adapters:  make(map[string]Adapter),
+		pool: sync.Pool{
+			New: func() any {
+				return new(Item)
+			},
+		},
 	}
 	for _, a := range adapter {
 		ad.AddAdapter(a)
@@ -102,19 +112,27 @@ func (l *GLogger) print(level LEVEL, f interface{}, v ...interface{}) {
 		frame, _ = runtime.CallersFrames([]uintptr{pcs[0]}).Next()
 		mp.Put(pcs, frame)
 	}
-	item := &Item{
-		Level:   level,
-		Time:    time.Now(),
-		File:    frame.File,
-		Line:    frame.Line,
-		Content: l.formatPattern(f, v...),
-	}
+	item := l.pool.Get().(*Item)
+	item.Level = level
+	item.Time = time.Now()
+	item.File = frame.File
+	item.Line = frame.Line
+	item.Content = l.formatPattern(f, v...)
+	item.count = 0
+	item.pool = &l.pool
+	//item := &Item{
+	//	Level:   level,
+	//	Time:    time.Now(),
+	//	File:    frame.File,
+	//	Line:    frame.Line,
+	//	Content: l.formatPattern(f, v...),
+	//}
 	for _, adapter := range l.adapters {
+		atomic.AddInt32(&item.count, 1)
 		adapter.Write(item)
 	}
 }
 func (l *GLogger) formatPattern(f interface{}, v ...interface{}) string {
-
 	fstr := l.format(f, v...)
 	if len(v) > 0 {
 		fstr = fmt.Sprintf(fstr, v...)

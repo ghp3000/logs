@@ -1,5 +1,7 @@
 package logs
 
+import "sync/atomic"
+
 type Adapter interface {
 	Name() string
 	Write(item *Item)
@@ -47,4 +49,9 @@ func (c *BaseAdapter) SetLevel(level LEVEL) {
 }
 func (c *BaseAdapter) Close() {
 	c.level = LevelOff
+}
+func (c *BaseAdapter) clean(item *Item) {
+	if atomic.AddInt32(&item.count, -1) == 0 {
+		item.pool.Put(item)
+	}
 }
