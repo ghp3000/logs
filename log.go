@@ -3,7 +3,6 @@ package logs
 import (
 	"fmt"
 	"github.com/donnie4w/gofer/hashmap"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -120,13 +119,6 @@ func (l *GLogger) print(level LEVEL, f interface{}, v ...interface{}) {
 	item.Content = l.formatPattern(f, v...)
 	item.count = 0
 	item.pool = &l.pool
-	//item := &Item{
-	//	Level:   level,
-	//	Time:    time.Now(),
-	//	File:    frame.File,
-	//	Line:    frame.Line,
-	//	Content: l.formatPattern(f, v...),
-	//}
 	for _, adapter := range l.adapters {
 		atomic.AddInt32(&item.count, 1)
 		adapter.Write(item)
@@ -192,24 +184,6 @@ func (l *GLogger) Adapters() (ret []string) {
 }
 func (l *GLogger) Adapter(name string) Adapter {
 	return l.adapters[name]
-}
-
-func mkdirDir(dir string) (e error) {
-	_, er := os.Stat(dir)
-	b := er == nil || os.IsExist(er)
-	if !b {
-		if err := os.MkdirAll(dir, 0666); err != nil {
-			if os.IsPermission(err) {
-				e = err
-			}
-		}
-	}
-	return
-}
-
-func isFileExist(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil || os.IsExist(err)
 }
 
 func catchError() {

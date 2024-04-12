@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -16,20 +17,13 @@ import (
 	"time"
 )
 
-type TimeMode uint8
 type rollingType uint8
 
 const (
-	ModeHour  TimeMode = 1
-	ModeDay   TimeMode = 2
-	ModeMonth TimeMode = 3
-
 	RollingDaily rollingType = 0 //按日期分割文件
 	RollingFile  rollingType = 1 //按文件大小分割文件
 
-	dateformatDay   = "20060102"
-	dateformatHour  = "2006010215"
-	dateformatMonth = "200601"
+	dateformatDay = "20060102"
 )
 
 const (
@@ -40,6 +34,15 @@ const (
 	TB
 )
 
+type FileConfig struct {
+	Dir         string
+	FileName    string
+	FileMaxSize int64
+	FileMaxNum  int
+	RollType    rollingType
+	Gzip        bool
+}
+
 type FileLog struct {
 	BaseAdapter
 	cache   chan *Item
@@ -49,27 +52,30 @@ type FileLog struct {
 	cancel  chan struct{}
 }
 
-func NewFileLog(level LEVEL, timeFormat, format string, trimPath string) (Adapter, error) {
+func NewFileLog(level LEVEL, cfg *FileConfig, async int, trimPath string) (Adapter, error) {
 	f := &FileLog{
 		BaseAdapter: BaseAdapter{
 			level:      level,
-			timeFormat: timeFormat,
-			format:     format,
+			timeFormat: DefaultTimeFormatLong,
+			format:     DefaultLogFormat,
 			trimPath:   trimPath,
 			trim:       len(trimPath) != 0,
 			name:       "file",
 		},
-		cache: make(chan *Item, 100),
-		sync:  false,
-		fs:    new(fileStore),
+		fs: new(fileStore),
 	}
-	f.fs.fileDir = "d:\\cfoldTest"
-	f.fs.fileName = "test.log"
-	f.fs.maxSize = 10 * MB
-	f.fs.fileSize = MB
-	f.fs.rollType = RollingFile
-	f.fs.mode = ModeDay
-	f.fs.gzip = false
+	if async == 0 {
+		f.sync = true
+	} else {
+		f.cache = make(chan *Item, async)
+		f.sync = false
+	}
+	f.fs.fileDir = cfg.Dir
+	f.fs.fileName = cfg.FileName
+	f.fs.maxSize = cfg.FileMaxSize
+	f.fs.rollType = cfg.RollType
+	f.fs.maxFileNum = cfg.FileMaxNum
+	f.fs.gzip = cfg.Gzip
 	if err := f.fs.openFileHandler(); err != nil {
 		return nil, err
 	}
@@ -138,13 +144,9 @@ func (c *FileLog) backUp() (bakfn string, err, openFileErr error) {
 	}
 	bakfn, err = c.fs.rename()
 	if err != nil {
-
 		return
 	}
 	openFileErr = c.fs.openFileHandler()
-	if openFileErr != nil {
-
-	}
 	return
 }
 func (c *FileLog) Close() {
@@ -170,16 +172,18 @@ func (c *FileLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
 	return buf
 }
 
+// 两种模式:
+// 1.RollingDaily, 最大存储日志=TimeMode数量*maxFileNum.比如1天一个文件,最大存储日志=1天*maxFileNum
+// 2.RollingFile, 最大存储日志=maxSize是单个文件的最大大小.最大存储日志=maxSize*maxFileNum
 type fileStore struct {
 	fileDir     string      //日志文件所在的目录
 	fileName    string      //日志文件名
 	maxSize     int64       //日志文件的最大大小
-	fileSize    int64       //单个日志文件的大小
+	fileSize    int64       //记录当前日志文件的大小
 	rollType    rollingType //日志的滚动模式,按日期或按文件大小
 	tomorSecond int64       //日志文件的下一天的时间戳
 	isFileWell  bool        //文件是否正常
 	maxFileNum  int         //日志文件最大数量
-	mode        TimeMode    //日志文件滚动模式
 	gzip        bool        //是否开启gzip
 
 	fileHandler *os.File
@@ -191,19 +195,19 @@ func (t *fileStore) openFileHandler() (e error) {
 		e = errors.New("log filePath is null or error")
 		return
 	}
-	e = mkdirDir(t.fileDir)
+	e = os.MkdirAll(t.fileDir, 0666)
 	if e != nil {
 		t.isFileWell = false
 		return
 	}
-	fname := fmt.Sprint(t.fileDir, "/", t.fileName)
+	fname := filepath.Join(t.fileDir, t.fileName)
 	t.fileHandler, e = os.OpenFile(fname, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 	if e != nil {
 		t.isFileWell = false
 		return
 	}
 	t.isFileWell = true
-	t.tomorSecond = tomorSecond(t.mode)
+	t.tomorSecond = tomorSecond()
 	if fs, err := t.fileHandler.Stat(); err == nil {
 		t.fileSize = fs.Size()
 	} else {
@@ -227,83 +231,59 @@ func (t *fileStore) isMustBackUp() bool {
 			return true
 		}
 	case RollingFile:
-		return t.fileSize > 0 && t.fileSize >= t.maxSize
+		return t.maxSize > 0 && t.fileSize >= t.maxSize
 	}
 	return false
 }
 func (t *fileStore) rename() (backupFileName string, err error) {
 	if t.rollType == RollingDaily {
-		backupFileName = t.getBackupDailyFileName(t.fileDir, t.fileName, t.mode, t.gzip)
+		backupFileName = t.getBackupDailyFileName(t.fileDir, t.fileName, t.gzip)
 	} else {
 		backupFileName, err = t.getBackupRollFileName(t.fileDir, t.fileName, t.gzip)
 	}
 	if backupFileName != "" && err == nil {
-		oldPath := fmt.Sprint(t.fileDir, "/", t.fileName)
-		newPath := fmt.Sprint(t.fileDir, "/", backupFileName)
+		oldPath := filepath.Join(t.fileDir, t.fileName)
+		newPath := filepath.Join(t.fileDir, backupFileName)
 		err = os.Rename(oldPath, newPath)
-		go func() {
-			if err == nil && t.gzip {
-				if err = lgzip(fmt.Sprint(newPath, ".gz"), backupFileName, newPath); err == nil {
-					os.Remove(newPath)
-				}
+		if err == nil {
+			if t.gzip {
+				go func() {
+					if err = lgzip(fmt.Sprint(newPath, ".gz"), backupFileName, newPath); err == nil {
+						os.Remove(newPath)
+					}
+					if err == nil && t.maxFileNum > 0 {
+						t.rmDeadFile(t.fileDir, backupFileName, t.maxFileNum, t.gzip)
+					}
+				}()
+			} else {
+				t.rmDeadFile(t.fileDir, backupFileName, t.maxFileNum, t.gzip)
 			}
-			if err == nil && t.rollType == RollingFile && t.maxFileNum > 0 {
-				t.rmOverCountFile(t.fileDir, backupFileName, t.maxFileNum, t.gzip)
-			}
-		}()
+		}
 	}
 	return
 }
-func (t *fileStore) rmOverCountFile(dir, backupfileName string, maxFileNum int, isGzip bool) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	f, err := os.Open(dir)
+func (t *fileStore) rmDeadFile(dir, backupFileName string, maxFileNum int, isGzip bool) {
+	index := strings.LastIndex(backupFileName, "_")
+	indexSuffix := strings.LastIndex(backupFileName, ".")
+	if indexSuffix == 0 {
+		indexSuffix = len(backupFileName)
+	}
+	preFixname := backupFileName[:index+1]
+	suffix := backupFileName[indexSuffix:]
+	ret, err := getDir(dir, preFixname, suffix)
+	if len(ret) <= maxFileNum {
+		return
+	}
 	if err != nil {
 		return
 	}
-	dirs, _ := f.ReadDir(-1)
-	f.Close()
-	if len(dirs) <= maxFileNum {
-		return
-	}
-	sort.Slice(dirs, func(i, j int) bool {
-		f1, _ := dirs[i].Info()
-		f2, _ := dirs[j].Info()
-		return f1.ModTime().Unix() > f2.ModTime().Unix()
-	})
-	index := strings.LastIndex(backupfileName, "_")
-	indexSuffix := strings.LastIndex(backupfileName, ".")
-	if indexSuffix == 0 {
-		indexSuffix = len(backupfileName)
-	}
-	prefixname := backupfileName[:index+1]
-	suffix := backupfileName[indexSuffix:]
-	suffixlen := len(suffix)
-	rmfiles := make([]string, 0)
-	i := 0
-	for _, ff := range dirs {
-		checkfname := ff.Name()
-		if isGzip && strings.HasSuffix(checkfname, ".gz") {
-			checkfname = checkfname[:len(checkfname)-3]
-		}
-		if len(checkfname) > len(prefixname) && checkfname[:len(prefixname)] == prefixname && matchString("^[0-9]+$", checkfname[len(prefixname):len(checkfname)-suffixlen]) {
-			finfo, err := ff.Info()
-			if err == nil && !finfo.IsDir() {
-				i++
-				if i > maxFileNum {
-					rmfiles = append(rmfiles, fmt.Sprint(dir, "/", f.Name()))
-				}
-			}
-		}
-	}
-	if len(rmfiles) > 0 {
-		for _, k := range rmfiles {
-			os.Remove(k)
-		}
+	for i := maxFileNum; i < len(ret); i++ {
+		os.Remove(filepath.Join(dir, ret[i].Name()))
+		fmt.Println("remove file:", filepath.Join(dir, ret[i].Name()))
 	}
 }
-func (t *fileStore) getBackupDailyFileName(dir, filename string, mode TimeMode, isGzip bool) (bckupfilename string) {
-	timeStr := _yestStr(mode)
+func (t *fileStore) getBackupDailyFileName(dir, filename string, isGzip bool) (bckupfilename string) {
+	timeStr := _yestStr()
 	index := strings.LastIndex(filename, ".")
 	if index <= 0 {
 		index = len(filename)
@@ -312,52 +292,38 @@ func (t *fileStore) getBackupDailyFileName(dir, filename string, mode TimeMode, 
 	suffix := filename[index:]
 	bckupfilename = fmt.Sprint(fname, "_", timeStr, suffix)
 	if isGzip {
-		if isFileExist(fmt.Sprint(t.fileDir, "/", bckupfilename, ".gz")) {
+		if isFileExist(filepath.Join(t.fileDir, bckupfilename) + ".gz") {
 			bckupfilename = t.getBackupFilename(1, dir, fmt.Sprint(fname, "_", timeStr), suffix, isGzip)
 		}
 	} else {
-		if isFileExist(fmt.Sprint(dir, "/", bckupfilename)) {
+		if isFileExist(filepath.Join(dir, bckupfilename)) {
 			bckupfilename = t.getBackupFilename(1, dir, fmt.Sprint(fname, "_", timeStr), suffix, isGzip)
 		}
 	}
 	return
 }
 func (t *fileStore) getBackupFilename(count int, dir, filename, suffix string, isGzip bool) (backupFilename string) {
-	backupFilename = fmt.Sprint(filename, "_", count, suffix)
+	backupFilename = fmt.Sprint(filename, "-", count, suffix)
 	if isGzip {
-		if isFileExist(fmt.Sprint(dir, "/", backupFilename, ".gz")) {
+		if isFileExist(filepath.Join(dir, backupFilename) + ".gz") {
 			return t.getBackupFilename(count+1, dir, filename, suffix, isGzip)
 		}
 	} else {
-		if isFileExist(fmt.Sprint(dir, "/", backupFilename)) {
+		if isFileExist(filepath.Join(dir, backupFilename)) {
 			return t.getBackupFilename(count+1, dir, filename, suffix, isGzip)
 		}
 	}
 	return
 }
 func (t *fileStore) getBackupRollFileName(dir, filename string, isGzip bool) (backupFilename string, er error) {
-	list, err := getDirList(dir)
-	if err != nil {
-		er = err
-		return
-	}
+	timeStr := _yestStr()
 	index := strings.LastIndex(filename, ".")
 	if index <= 0 {
 		index = len(filename)
 	}
 	fname := filename[:index]
 	suffix := filename[index:]
-	i := 1
-	for _, fd := range list {
-		pattern := fmt.Sprint(`^`, fname, `_[\d]{1,}`, suffix, `$`)
-		if isGzip {
-			pattern = fmt.Sprint(`^`, fname, `_[\d]{1,}`, suffix, `.gz$`)
-		}
-		if matchString(pattern, fd.Name()) {
-			i++
-		}
-	}
-	backupFilename = t.getBackupFilename(i, dir, fname, suffix, isGzip)
+	backupFilename = t.getBackupFilename(1, dir, fmt.Sprint(fname, "_", timeStr), suffix, isGzip)
 	return
 }
 func (t *fileStore) close() (err error) {
@@ -368,31 +334,12 @@ func (t *fileStore) close() (err error) {
 	return
 }
 
-func tomorSecond(mode TimeMode) int64 {
+func tomorSecond() int64 {
 	now := time.Now()
-	switch mode {
-	case ModeDay:
-		return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()).Unix()
-	case ModeHour:
-		return time.Date(now.Year(), now.Month(), now.Day(), now.Hour()+1, 0, 0, 0, now.Location()).Unix()
-	case ModeMonth:
-		return time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1).Unix()
-	default:
-		return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()).Unix()
-	}
+	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()).Unix()
 }
-func _yestStr(mode TimeMode) string {
-	now := time.Now()
-	switch mode {
-	case ModeDay:
-		return now.AddDate(0, 0, -1).Format(dateformatDay)
-	case ModeHour:
-		return now.Add(-1 * time.Hour).Format(dateformatHour)
-	case ModeMonth:
-		return now.AddDate(0, -1, 0).Format(dateformatMonth)
-	default:
-		return now.AddDate(0, 0, -1).Format(dateformatDay)
-	}
+func _yestStr() string {
+	return time.Now().Format(dateformatDay)
 }
 func lgzip(gzfile, gzname, srcfile string) (err error) {
 	var gf *os.File
@@ -411,6 +358,11 @@ func lgzip(gzfile, gzname, srcfile string) (err error) {
 	}
 	return
 }
+
+func isFileExist(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil || os.IsExist(err)
+}
 func matchString(pattern string, s string) bool {
 	b, err := regexp.MatchString(pattern, s)
 	if err != nil {
@@ -418,11 +370,47 @@ func matchString(pattern string, s string) bool {
 	}
 	return b
 }
-func getDirList(dir string) ([]os.DirEntry, error) {
+
+// eg:prefix="mylog_",suffix=".log"
+func getPattern(prefix, suffix string) string {
+	var builder strings.Builder
+	builder.WriteString(strings.Replace(strings.Replace(prefix, "_", `\_`, -1), "-", `\-`, -1))
+	builder.WriteString(`\d+(\-\d+)?\`)
+	if len(suffix) > 0 {
+		builder.WriteString(suffix)
+	}
+	builder.WriteString(`(\.gz)?`)
+	return builder.String()
+}
+
+func getDir(dir, prefix, suffix string) (ret []os.DirEntry, err error) {
 	f, err := os.Open(dir)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return f.ReadDir(-1)
+	list, err := f.ReadDir(-1)
+	if err != nil {
+		return nil, err
+	}
+	pattern := getPattern(prefix, suffix)
+	for i := 0; i < len(list); i++ {
+		if !list[i].IsDir() {
+			if matchString(pattern, list[i].Name()) {
+				ret = append(ret, list[i])
+			}
+		}
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		f1, err := ret[i].Info()
+		if err != nil {
+			return false
+		}
+		f2, err := ret[j].Info()
+		if err != nil {
+			return false
+		}
+		return f1.ModTime().UnixMilli() > f2.ModTime().UnixMilli()
+	})
+	return ret, nil
 }
