@@ -162,7 +162,7 @@ func (l *GLogger) calcMaxLevel() {
 	}
 }
 
-func (l *GLogger) Level() LEVEL {
+func (l *GLogger) GetLevel() LEVEL {
 	return l.level
 }
 func (l *GLogger) AddAdapter(adapter Adapter) {
@@ -176,16 +176,18 @@ func (l *GLogger) RemoveAdapter(name string) {
 	delete(l.adapters, name)
 	l.calcMaxLevel()
 }
-func (l *GLogger) Adapters() (ret []string) {
+func (l *GLogger) GetAdapters() (ret []string) {
 	for s, _ := range l.adapters {
 		ret = append(ret, s)
 	}
 	return
 }
-func (l *GLogger) Adapter(name string) Adapter {
+func (l *GLogger) GetAdapter(name string) Adapter {
 	return l.adapters[name]
 }
-
+func (l *GLogger) SetCallDepth(callDepth int) {
+	l.callDepth = callDepth
+}
 func catchError() {
 	if err := recover(); err != nil {
 		//Fatal(string(debug.Stack()))
