@@ -35,3 +35,6 @@ func GetAdapter(name string) Adapter {
 func SetCallDepth(callDepth int) {
 	defaultLogger.SetCallDepth(callDepth)
 }
+func Close() {
+	defaultLogger.Close()
+}
