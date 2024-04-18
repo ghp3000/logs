@@ -92,7 +92,7 @@ func (l *GLogger) Fatal(f interface{}, v ...interface{}) {
 	l.print(LevelFatal, f, v...)
 }
 
-func (l *GLogger) Close(f interface{}, v ...interface{}) {
+func (l *GLogger) Close() {
 	for _, adapter := range l.adapters {
 		adapter.Close()
 	}
