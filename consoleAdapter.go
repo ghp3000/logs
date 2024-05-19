@@ -38,7 +38,7 @@ func (c *ConsoleLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
 	buf.WriteString(item.Level.Name())
 	buf.WriteString("] ")
 	if c.trim {
-		buf.WriteString(strings.TrimLeft(item.File, c.trimPath))
+		buf.WriteString(strings.TrimPrefix(item.File, c.trimPath))
 	} else {
 		buf.WriteString(item.File)
 	}
