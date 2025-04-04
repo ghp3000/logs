@@ -1,6 +1,9 @@
 package logs
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+	"time"
+)
 
 type Adapter interface {
 	Name() string
@@ -52,6 +55,10 @@ func (c *BaseAdapter) Close() {
 }
 func (c *BaseAdapter) clean(item *Item) {
 	if atomic.AddInt32(&item.count, -1) == 0 {
+		item.File = ""
+		item.Line = 0
+		item.Content = ""
+		item.Time = time.Time{}
 		item.pool.Put(item)
 	}
 }
