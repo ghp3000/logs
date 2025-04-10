@@ -42,9 +42,10 @@ func (c *ConsoleLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
 	} else {
 		buf.WriteString(item.File)
 	}
-	buf.WriteString("[")
+	//utils\example\example.go:60
+	buf.WriteString(":")
 	buf.WriteString(strconv.Itoa(item.Line))
-	buf.WriteString("]:")
+	buf.WriteString(" ")
 	buf.WriteString(item.Content)
 	buf.WriteByte('\n')
 	return buf
