@@ -92,7 +92,7 @@ func (c *FileLog) loop() {
 	for {
 		select {
 		case item := <-c.cache:
-			c.write(buf, item)
+			_, _ = c.write(buf, item)
 		case <-c.cancel:
 			close(c.cancel)
 			close(c.cache)
@@ -108,7 +108,7 @@ func (c *FileLog) Write(item *Item) {
 	}
 	if c.sync {
 		buf := bytes.NewBuffer(nil)
-		c.write(buf, item)
+		_, _ = c.write(buf, item)
 	} else {
 		c.cache <- item
 	}
@@ -128,7 +128,7 @@ func (c *FileLog) write(buf *bytes.Buffer, item *Item) (bakfn string, err error)
 			c._rwLock.RLock()
 			defer c._rwLock.RUnlock()
 			buf.Reset()
-			c.fs.write2file(c.formatItem(buf, item).Bytes())
+			_, _ = c.fs.write2file(c.formatItem(buf, item).Bytes())
 			return
 		}
 	}
@@ -251,7 +251,7 @@ func (t *fileStore) rename() (backupFileName string, err error) {
 			if t.gzip {
 				go func() {
 					if err = lgzip(fmt.Sprint(newPath, ".gz"), backupFileName, newPath); err == nil {
-						os.Remove(newPath)
+						_ = os.Remove(newPath)
 					}
 					if err == nil && t.maxFileNum > 0 {
 						t.rmDeadFile(t.fileDir, backupFileName, t.maxFileNum, t.gzip)
@@ -280,7 +280,7 @@ func (t *fileStore) rmDeadFile(dir, backupFileName string, maxFileNum int, isGzi
 		return
 	}
 	for i := maxFileNum; i < len(ret); i++ {
-		os.Remove(filepath.Join(dir, ret[i].Name()))
+		_ = os.Remove(filepath.Join(dir, ret[i].Name()))
 		//fmt.Println("remove file:", filepath.Join(dir, ret[i].Name()))
 	}
 }
@@ -354,7 +354,7 @@ func lgzip(gzfile, gzname, srcfile string) (err error) {
 			defer gw.Close()
 			gw.Header.Name = gzname
 			var buf bytes.Buffer
-			io.Copy(&buf, f1)
+			_, _ = io.Copy(&buf, f1)
 			_, err = gw.Write(buf.Bytes())
 		}
 	}
