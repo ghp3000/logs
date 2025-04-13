@@ -23,6 +23,7 @@ type BaseAdapter struct {
 	trimPath   string
 	trim       bool
 	name       string
+	timeBuf    []byte
 }
 
 func (c *BaseAdapter) SetTimeFormat(s string) {

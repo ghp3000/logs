@@ -3,6 +3,7 @@ package logs
 import "testing"
 
 func BenchmarkSerialLog(b *testing.B) {
+	b.ReportAllocs()
 	b.StopTimer()
 	//console := NewConsoleLog(LevelAll, DefaultTimeFormatShort, DefaultLogFormat, "D:/project/")
 	cfg := &FileConfig{
@@ -13,7 +14,7 @@ func BenchmarkSerialLog(b *testing.B) {
 		RollType:    RollingFile,
 		Gzip:        false,
 	}
-	file, err := NewFileLog(LevelAll, cfg, 100, "D:/project/")
+	file, err := NewFileLog(LevelAll, cfg, 100, "")
 	if err != nil {
 		panic(err)
 	}

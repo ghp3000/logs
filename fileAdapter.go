@@ -61,6 +61,7 @@ func NewFileLog(level LEVEL, cfg *FileConfig, async int, trimPath string) (Adapt
 			trimPath:   trimPath,
 			trim:       len(trimPath) != 0,
 			name:       "file",
+			timeBuf:    make([]byte, 0, 64),
 		},
 		fs: new(fileStore),
 	}
@@ -157,7 +158,9 @@ func (c *FileLog) Close() {
 	c.level = LevelOff
 }
 func (c *FileLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
-	buf.WriteString(item.Time.Format(c.timeFormat))
+	c.timeBuf = c.timeBuf[:0]
+	buf.Write(item.Time.AppendFormat(c.timeBuf, c.timeFormat))
+	//buf.WriteString(item.Time.Format(c.timeFormat))
 	buf.WriteString(" [")
 	buf.WriteString(item.Level.Name())
 	buf.WriteString("] ")

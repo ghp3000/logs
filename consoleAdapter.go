@@ -20,6 +20,7 @@ func NewConsoleLog(level LEVEL, timeFormat, format string, trimPath string) Adap
 			trimPath:   trimPath,
 			trim:       len(trimPath) != 0,
 			name:       "console",
+			timeBuf:    make([]byte, 0, 64),
 		},
 	}
 }
@@ -34,7 +35,9 @@ func (c *ConsoleLog) Write(item *Item) {
 	buf.Reset()
 }
 func (c *ConsoleLog) formatItem(buf *bytes.Buffer, item *Item) *bytes.Buffer {
-	buf.WriteString(item.Time.Format(c.timeFormat))
+	//buf.WriteString(item.Time.Format(c.timeFormat))
+	c.timeBuf = c.timeBuf[:0]
+	buf.Write(item.Time.AppendFormat(c.timeBuf, c.timeFormat))
 	buf.WriteString(" [")
 	buf.WriteString(item.Level.Name())
 	buf.WriteString("] ")
