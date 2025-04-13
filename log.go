@@ -187,7 +187,7 @@ func (l *GLogger) RemoveAdapter(name string) {
 	l.calcMaxLevel()
 }
 func (l *GLogger) GetAdapters() (ret []string) {
-	for s, _ := range l.adapters {
+	for s := range l.adapters {
 		ret = append(ret, s)
 	}
 	return
