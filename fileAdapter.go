@@ -102,7 +102,8 @@ func (c *FileLog) loop() {
 }
 func (c *FileLog) Write(item *Item) {
 	if c.level > item.Level {
-		c.clean(item)
+		//c.clean(item)
+		item.Put()
 		return
 	}
 	if c.sync {
@@ -116,7 +117,8 @@ func (c *FileLog) write(buf *bytes.Buffer, item *Item) (bakfn string, err error)
 	if item == nil {
 		return
 	}
-	defer c.clean(item)
+	//defer c.clean(item)
+	defer item.Put()
 	if c.fs.isFileWell {
 		var openFileErr error
 		if c.fs.isMustBackUp() {
@@ -125,8 +127,8 @@ func (c *FileLog) write(buf *bytes.Buffer, item *Item) (bakfn string, err error)
 		if openFileErr == nil {
 			c._rwLock.RLock()
 			defer c._rwLock.RUnlock()
-			c.fs.write2file(c.formatItem(buf, item).Bytes())
 			buf.Reset()
+			c.fs.write2file(c.formatItem(buf, item).Bytes())
 			return
 		}
 	}
@@ -279,7 +281,7 @@ func (t *fileStore) rmDeadFile(dir, backupFileName string, maxFileNum int, isGzi
 	}
 	for i := maxFileNum; i < len(ret); i++ {
 		os.Remove(filepath.Join(dir, ret[i].Name()))
-		fmt.Println("remove file:", filepath.Join(dir, ret[i].Name()))
+		//fmt.Println("remove file:", filepath.Join(dir, ret[i].Name()))
 	}
 }
 func (t *fileStore) getBackupDailyFileName(dir, filename string, isGzip bool) (bckupfilename string) {

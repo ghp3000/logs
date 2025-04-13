@@ -24,7 +24,8 @@ func NewConsoleLog(level LEVEL, timeFormat, format string, trimPath string) Adap
 	}
 }
 func (c *ConsoleLog) Write(item *Item) {
-	defer c.clean(item)
+	//defer c.clean(item)
+	defer item.Put()
 	if c.level > item.Level {
 		return
 	}

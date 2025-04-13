@@ -53,6 +53,16 @@ type Item struct {
 	pool    *sync.Pool
 }
 
+func (i *Item) Put() {
+	if atomic.AddInt32(&i.count, -1) < 1 {
+		//i.File = ""
+		//i.Line = 0
+		//i.Content = ""
+		//i.Time = time.Time{}
+		i.pool.Put(i)
+	}
+}
+
 type GLogger struct {
 	level     LEVEL //基础日志级别.
 	callDepth int
