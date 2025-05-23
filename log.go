@@ -62,6 +62,10 @@ func (i *Item) Put() {
 		i.pool.Put(i)
 	}
 }
+func (i *Item) Ref() *Item {
+	atomic.AddInt32(&i.count, 1)
+	return i
+}
 
 type GLogger struct {
 	level     LEVEL //基础日志级别.
@@ -127,12 +131,13 @@ func (l *GLogger) print(level LEVEL, f interface{}, v ...interface{}) {
 	item.File = frame.File
 	item.Line = frame.Line
 	item.Content = l.formatPattern(f, v...)
-	item.count = 0
+	item.count = 1
 	item.pool = &l.pool
 	for _, adapter := range l.adapters {
-		atomic.AddInt32(&item.count, 1)
-		adapter.Write(item)
+		//atomic.AddInt32(&item.count, 1)
+		adapter.Write(item.Ref())
 	}
+	item.Put()
 }
 func (l *GLogger) formatPattern(f interface{}, v ...interface{}) string {
 	fstr := l.format(f, v...)
